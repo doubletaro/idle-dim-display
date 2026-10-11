@@ -8,7 +8,7 @@ A power-saving **system-tray resident** for Windows: dims the monitor backlight 
 |---|---|
 | Idle time before dim | 3 min |
 | Dimmed brightness | 30% |
-| Poll interval | 15 s |
+| Poll interval | 1 s (restore latency ≤ 1 s; DDC traffic only at dim time) |
 | Restore condition | Any input detected (idle < 10 s) |
 | Re-dim protection after restore | 30 s |
 

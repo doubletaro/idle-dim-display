@@ -30,7 +30,7 @@ function Get-Config {
     if (Test-Path $script:CfgPath) {
         try { return Get-Content $script:CfgPath -Raw | ConvertFrom-Json } catch { }
     }
-    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 15; Language = 'ja' }
+    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 1; Language = 'ja' }
     $def | ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
     return $def
 }
@@ -217,7 +217,7 @@ function Show-Settings {
     $script:dlgNumDim = Add-Row 55 (T 'dim')
     $script:dlgNumDim.Minimum = 1; $script:dlgNumDim.Maximum = 100; $script:dlgNumDim.Value = $script:DimLevel
     $script:dlgNumPoll = Add-Row 95 (T 'poll')
-    $script:dlgNumPoll.Minimum = 5; $script:dlgNumPoll.Maximum = 120; $script:dlgNumPoll.Value = $script:PollSec
+    $script:dlgNumPoll.Minimum = 1; $script:dlgNumPoll.Maximum = 120; $script:dlgNumPoll.Value = $script:PollSec
 
     # --- live brightness slider (applies via DDC immediately) ---
     $script:dlgLblSlider = New-Object System.Windows.Forms.Label
@@ -341,28 +341,32 @@ function Show-Settings {
 }
 
 # --- timer: dim/restore loop ---
+# ticks every PollSec (1s recommended): restore is checked cheaply every tick via
+# GetLastInputInfo only; DDC communication happens just once, at dim time.
 $script:timer = New-Object System.Windows.Forms.Timer
 $script:timer.Interval = $script:PollSec * 1000
 $script:timer.Add_Tick({
     if ($script:paused) { return }
-    $probe = [Ddc]::Probe()
-    if ($probe -eq "") { return }
-    $p = $probe.Split('|')
-    $min = [uint32]$p[0]; $cur = [uint32]$p[1]
     $idle = [Ddc]::IdleSeconds()
     $threshold = $script:IdleMinutes * 60
-    if ($idle -ge $threshold -and -not $script:dimmed -and ((Get-Date) - $script:lastRestore).TotalSeconds -gt 30) {
-        $script:origLevel = $cur
-        [void][Ddc]::SetLevel([Math]::Max($script:DimLevel, $min))
-        $script:dimmed = $true
-        Log ("dim: idle {0}s -> {1}% (restore={2}%)" -f $idle, $script:DimLevel, $script:origLevel)
-        Update-Tray
-    }
-    elseif ($script:dimmed -and $idle -lt 10) {
+    if ($script:dimmed -and $idle -lt 10) {
+        # fast path: fresh input -> restore immediately (no probe needed)
         if ($script:origLevel -ge 0) { [void][Ddc]::SetLevel([uint32]$script:origLevel) }
         $script:dimmed = $false
         $script:lastRestore = Get-Date
         Log ("restore: input detected -> {0}%" -f $script:origLevel)
+        Update-Tray
+        return
+    }
+    if (-not $script:dimmed -and $idle -ge $threshold -and ((Get-Date) - $script:lastRestore).TotalSeconds -gt 30) {
+        $probe = [Ddc]::Probe()
+        if ($probe -eq "") { return }
+        $p = $probe.Split('|')
+        $min = [uint32]$p[0]; $cur = [uint32]$p[1]
+        $script:origLevel = $cur
+        [void][Ddc]::SetLevel([Math]::Max($script:DimLevel, $min))
+        $script:dimmed = $true
+        Log ("dim: idle {0}s -> {1}% (restore={2}%)" -f $idle, $script:DimLevel, $script:origLevel)
         Update-Tray
     }
 })
