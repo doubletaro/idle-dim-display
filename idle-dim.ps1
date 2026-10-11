@@ -1,0 +1,30 @@
+# idle-dim.ps1 - control the idle display dimmer: start | stop | status
+param([Parameter(Mandatory=$true)][string]$Action)
+
+$Task = "IdleDimWatcher"
+$LogFile = "$env:USERPROFILE\bin\idle-dim.log"
+
+switch ($Action.ToLower()) {
+    "start" {
+        schtasks /run /tn $Task | Out-Null
+        Start-Sleep -Seconds 2
+        $t = Get-ScheduledTask -TaskName $Task
+        Write-Output ("idle-dim: " + $t.State)
+    }
+    "stop" {
+        schtasks /end /tn $Task | Out-Null
+        # restore brightness to full (DDC)
+        powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\bin\ddc-restore.ps1"
+        $t = Get-ScheduledTask -TaskName $Task
+        Write-Output ("idle-dim: " + $t.State + " (brightness restored)")
+    }
+    "status" {
+        $t = Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+        if ($t) { Write-Output ("task: " + $t.State) } else { Write-Output "task: NOT-INSTALLED" }
+        if (Test-Path $LogFile) {
+            Write-Output "--- last 5 log lines ---"
+            Get-Content $LogFile -Tail 5
+        }
+    }
+    default { Write-Output "usage: idle-dim.ps1 start|stop|status" }
+}
