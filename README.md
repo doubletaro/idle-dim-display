@@ -19,12 +19,14 @@ A power-saving **system-tray resident** for Windows: dims the monitor backlight 
 - Restore always returns to the brightness captured right before dimming — manual brightness changes are respected.
 - If no DDC/CI monitor responds, the tool does nothing (safe no-op).
 - Single-instance guard (process enumeration + self-PID exclusion).
+- **Self-healing**: `idle-dim-wrapper.ps1` (started by the logon task) restarts the tray automatically if it crashes (non-zero exit). Unhandled exceptions are logged to `~/bin/idle-dim.log` (`UI-EXCEPTION:` / `DOMAIN-EXCEPTION:` lines) instead of dying silently. `idle-dim.ps1 stop` writes an `idle-dim.stop` flag file so the wrapper stays stopped.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `idle-dim-tray.ps1` | **Main**: tray resident + settings GUI + DDC control (must be UTF-8 **with BOM** — BOM-less breaks PS 5.1 parsing) |
+| `idle-dim-wrapper.ps1` | Keep-alive wrapper: auto-restarts the tray on crash; honors `idle-dim.stop` |
 | `idle-dim.ps1` | CLI control: start / stop / status |
 | `idle-dim-config.json` | Settings (deployed to `~/bin/`, written by the GUI) |
 | `ddc-probe.ps1` | Check DDC/CI support and current brightness |

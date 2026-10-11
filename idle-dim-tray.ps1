@@ -13,6 +13,13 @@ function Log([string]$msg) {
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" | Out-File -FilePath $script:LogPath -Append -Encoding utf8
 }
 
+# --- crash logging: any unhandled UI/domain exception lands in the log instead of dying silently ---
+[System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException, $true)
+$uiExHandler = [System.Threading.ThreadExceptionEventHandler]{ param($s, $e) Log ("UI-EXCEPTION: " + $e.Exception.ToString()) }
+[System.Windows.Forms.Application]::add_ThreadException($uiExHandler)
+$domainExHandler = [System.UnhandledExceptionEventHandler]{ param($s, $e) Log ("DOMAIN-EXCEPTION: " + $e.ExceptionObject.ToString()) }
+[System.AppDomain]::CurrentDomain.add_UnhandledException($domainExHandler)
+
 # --- single instance guard (process enumeration; mutex proved unreliable under PS New-Object) ---
 $others = Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'idle-dim-tray' }
