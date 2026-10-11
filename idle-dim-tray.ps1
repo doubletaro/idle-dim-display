@@ -23,7 +23,7 @@ function Get-Config {
     if (Test-Path $script:CfgPath) {
         try { return Get-Content $script:CfgPath -Raw | ConvertFrom-Json } catch { }
     }
-    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 15 }
+    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 15; Language = 'ja' }
     $def | ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
     return $def
 }
@@ -31,6 +31,8 @@ $cfg = Get-Config
 $script:IdleMinutes = [int]$cfg.IdleMinutes
 $script:DimLevel    = [int]$cfg.DimLevel
 $script:PollSec     = [int]$cfg.PollSec
+$script:Lang        = [string]$cfg.Language
+if (@('ja','en','zh') -notcontains $script:Lang) { $script:Lang = 'ja' }
 
 # --- DDC/CI helpers ---
 $code = @'
@@ -138,44 +140,84 @@ function New-TrayIcon([string]$mode) {
 function Update-Tray {
     $mode = if ($script:paused) { 'paused' } elseif ($script:dimmed) { 'dim' } else { 'active' }
     $script:notify.Icon = New-TrayIcon $mode
-    $state = if ($script:paused) { '一時停止中' } elseif ($script:dimmed) { '暗転中' } else { '監視中' }
-    $script:notify.Text = "idle-dim: $state (${script:IdleMinutes}分→${script:DimLevel}%)"
+    $state = if ($script:paused) { T 'paused' } elseif ($script:dimmed) { T 'dimmed' } else { T 'watching' }
+    $script:notify.Text = "idle-dim: $state (${script:IdleMinutes}min→${script:DimLevel}%)"
+}
+
+# --- localization ---
+$script:LOC = @{
+    ja = @{
+        title='idle-dim 設定'; idle='暗転までの無操作時間(分)'; dim='暗転時の輝度(%)'; poll='チェック間隔(秒)'
+        slider='現在の輝度(即時適用)'; save='保存して適用'; cancel='閉じる'
+        settings='設定を開く(&O)'; test='今すぐ暗転テスト'; restore='100%に戻す'; pause='一時停止'; exit='終了(&X)'
+        watching='監視中'; dimmed='暗転中'; paused='一時停止中'
+        applied='輝度を適用中: {0}%'; infoDdc='モニター: DDC/CI対応 / 無操作: {0} 秒'; infoNoDdc='モニター: DDC/CI非応答'
+        lang='Language / 言語'
+    }
+    en = @{
+        title='idle-dim Settings'; idle='Idle minutes before dim'; dim='Dimmed brightness (%)'; poll='Check interval (seconds)'
+        slider='Current brightness (live)'; save='Save and Apply'; cancel='Close'
+        settings='&Settings...'; test='Dim test now'; restore='Restore to 100%'; pause='Pause'; exit='E&xit'
+        watching='Watching'; dimmed='Dimmed'; paused='Paused'
+        applied='Brightness applied: {0}%'; infoDdc='Monitor: DDC/CI OK / idle: {0} s'; infoNoDdc='Monitor: no DDC/CI response'
+        lang='Language'
+    }
+    zh = @{
+        title='idle-dim 设置'; idle='空闲多少分钟后变暗(分)'; dim='变暗时的亮度(%)'; poll='检查间隔(秒)'
+        slider='当前亮度(即时应用)'; save='保存并应用'; cancel='关闭'
+        settings='打开设置(&O)'; test='立即测试变暗'; restore='恢复到100%'; pause='暂停'; exit='退出(&X)'
+        watching='监控中'; dimmed='已变暗'; paused='已暂停'
+        applied='已应用亮度: {0}%'; infoDdc='显示器: DDC/CI 正常 / 空闲: {0} 秒'; infoNoDdc='显示器: 无 DDC/CI 响应'
+        lang='语言'
+    }
+}
+function T([string]$key) { return $script:LOC[$script:Lang][$key] }
+
+function Update-MenuTexts {
+    if (-not $script:miSettings) { return }
+    $script:miSettings.Text = T 'settings'
+    $script:miTest.Text     = T 'test'
+    $script:miRestore.Text  = T 'restore'
+    $script:miPause.Text    = T 'pause'
+    $script:miExit.Text     = T 'exit'
 }
 
 # --- settings dialog ---
 function Show-Settings {
     $script:dlgForm = New-Object System.Windows.Forms.Form
-    $script:dlgForm.Text = 'idle-dim 設定'
-    $script:dlgForm.Size = New-Object System.Drawing.Size(360, 330)
+    $script:dlgForm.Text = T 'title'
+    $script:dlgForm.Size = New-Object System.Drawing.Size(360, 380)
     $script:dlgForm.FormBorderStyle = 'FixedDialog'
     $script:dlgForm.StartPosition = 'CenterScreen'
     $script:dlgForm.TopMost = $true
     $script:dlgForm.MaximizeBox = $false
 
+    $script:dlgRowLabels = @{}
     function Add-Row([int]$y, [string]$text) {
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = $text; $lbl.Location = New-Object System.Drawing.Point(12, ($y + 3))
         $lbl.Size = New-Object System.Drawing.Size(210, 20)
         $script:dlgForm.Controls.Add($lbl)
+        $script:dlgRowLabels[[string]$y] = $lbl
         $num = New-Object System.Windows.Forms.NumericUpDown
         $num.Location = New-Object System.Drawing.Point(240, $y)
         $num.Size = New-Object System.Drawing.Size(90, 24)
         $script:dlgForm.Controls.Add($num)
         return $num
     }
-    $script:dlgNumIdle = Add-Row 15 '暗転までの無操作時間(分)'
+    $script:dlgNumIdle = Add-Row 15 (T 'idle')
     $script:dlgNumIdle.Minimum = 0; $script:dlgNumIdle.Maximum = 180; $script:dlgNumIdle.Value = $script:IdleMinutes
-    $script:dlgNumDim = Add-Row 55 '暗転時の輝度(%)'
+    $script:dlgNumDim = Add-Row 55 (T 'dim')
     $script:dlgNumDim.Minimum = 1; $script:dlgNumDim.Maximum = 100; $script:dlgNumDim.Value = $script:DimLevel
-    $script:dlgNumPoll = Add-Row 95 'チェック間隔(秒)'
+    $script:dlgNumPoll = Add-Row 95 (T 'poll')
     $script:dlgNumPoll.Minimum = 5; $script:dlgNumPoll.Maximum = 120; $script:dlgNumPoll.Value = $script:PollSec
 
     # --- live brightness slider (applies via DDC immediately) ---
-    $lblSlider = New-Object System.Windows.Forms.Label
-    $lblSlider.Text = '現在の輝度(即時適用)'
-    $lblSlider.Location = New-Object System.Drawing.Point(12, 135)
-    $lblSlider.Size = New-Object System.Drawing.Size(210, 20)
-    $script:dlgForm.Controls.Add($lblSlider)
+    $script:dlgLblSlider = New-Object System.Windows.Forms.Label
+    $script:dlgLblSlider.Text = T 'slider'
+    $script:dlgLblSlider.Location = New-Object System.Drawing.Point(12, 135)
+    $script:dlgLblSlider.Size = New-Object System.Drawing.Size(210, 20)
+    $script:dlgForm.Controls.Add($script:dlgLblSlider)
 
     $script:dlgTrack = New-Object System.Windows.Forms.TrackBar
     $script:dlgTrack.Minimum = 0
@@ -195,28 +237,69 @@ function Show-Settings {
     $script:dlgForm.Controls.Add($script:dlgTrack)
 
     $script:dlgLblInfo = New-Object System.Windows.Forms.Label
+    $script:dlgProbeOk = $false
     if ($probe -ne "") {
+        $script:dlgProbeOk = $true
         $idle = [Ddc]::IdleSeconds()
-        $script:dlgLblInfo.Text = "モニター: DDC/CI対応 / 無操作: $idle 秒"
+        $script:dlgLblInfo.Text = T 'infoDdc' -f $idle
     } else {
-        $script:dlgLblInfo.Text = "モニター: DDC/CI非応答"
+        $script:dlgLblInfo.Text = T 'infoNoDdc'
     }
     $script:dlgLblInfo.Location = New-Object System.Drawing.Point(12, 208)
     $script:dlgLblInfo.Size = New-Object System.Drawing.Size(320, 20)
     $script:dlgForm.Controls.Add($script:dlgLblInfo)
 
-    $btnSave = New-Object System.Windows.Forms.Button
-    $btnSave.Text = '保存して適用'
-    $btnSave.Location = New-Object System.Drawing.Point(12, 246)
-    $btnSave.Size = New-Object System.Drawing.Size(160, 32)
-    $script:dlgForm.Controls.Add($btnSave)
+    # --- language group (applies to the dialog immediately, persisted on save) ---
+    $script:dlgGrpLang = New-Object System.Windows.Forms.GroupBox
+    $script:dlgGrpLang.Text = T 'lang'
+    $script:dlgGrpLang.Location = New-Object System.Drawing.Point(12, 232)
+    $script:dlgGrpLang.Size = New-Object System.Drawing.Size(320, 54)
+    $script:dlgForm.Controls.Add($script:dlgGrpLang)
 
-    $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = '閉じる'
-    $btnCancel.Location = New-Object System.Drawing.Point(184, 246)
-    $btnCancel.Size = New-Object System.Drawing.Size(146, 32)
-    $btnCancel.DialogResult = 'Cancel'
-    $script:dlgForm.Controls.Add($btnCancel)
+    $script:dlgRadioJa = New-Object System.Windows.Forms.RadioButton
+    $script:dlgRadioJa.Text = '日本語'; $script:dlgRadioJa.Size = New-Object System.Drawing.Size(90, 20); $script:dlgRadioJa.Location = New-Object System.Drawing.Point(10, 24)
+    $script:dlgRadioEn = New-Object System.Windows.Forms.RadioButton
+    $script:dlgRadioEn.Text = 'English'; $script:dlgRadioEn.Size = New-Object System.Drawing.Size(90, 20); $script:dlgRadioEn.Location = New-Object System.Drawing.Point(110, 24)
+    $script:dlgRadioZh = New-Object System.Windows.Forms.RadioButton
+    $script:dlgRadioZh.Text = '中文'; $script:dlgRadioZh.Size = New-Object System.Drawing.Size(90, 20); $script:dlgRadioZh.Location = New-Object System.Drawing.Point(210, 24)
+    $script:dlgRadioJa.Checked = ($script:Lang -eq 'ja')
+    $script:dlgRadioEn.Checked = ($script:Lang -eq 'en')
+    $script:dlgRadioZh.Checked = ($script:Lang -eq 'zh')
+    $script:dlgGrpLang.Controls.Add($script:dlgRadioJa)
+    $script:dlgGrpLang.Controls.Add($script:dlgRadioEn)
+    $script:dlgGrpLang.Controls.Add($script:dlgRadioZh)
+
+    function Apply-DialogLanguage {
+        $script:dlgForm.Text = T 'title'
+        $script:dlgRowLabels['15'].Text = T 'idle'
+        $script:dlgRowLabels['55'].Text = T 'dim'
+        $script:dlgRowLabels['95'].Text = T 'poll'
+        $script:dlgLblSlider.Text = T 'slider'
+        $script:dlgGrpLang.Text = T 'lang'
+        $script:dlgBtnSave.Text = T 'save'
+        $script:dlgBtnCancel.Text = T 'cancel'
+        if ($script:dlgProbeOk) {
+            $script:dlgLblInfo.Text = ((T 'infoDdc') -f [Ddc]::IdleSeconds())
+        } else {
+            $script:dlgLblInfo.Text = T 'infoNoDdc'
+        }
+    }
+    $script:dlgRadioJa.Add_CheckedChanged({ if ($script:dlgRadioJa.Checked) { $script:Lang = 'ja'; Apply-DialogLanguage; Update-MenuTexts; Update-Tray } })
+    $script:dlgRadioEn.Add_CheckedChanged({ if ($script:dlgRadioEn.Checked) { $script:Lang = 'en'; Apply-DialogLanguage; Update-MenuTexts; Update-Tray } })
+    $script:dlgRadioZh.Add_CheckedChanged({ if ($script:dlgRadioZh.Checked) { $script:Lang = 'zh'; Apply-DialogLanguage; Update-MenuTexts; Update-Tray } })
+
+    $script:dlgBtnSave = New-Object System.Windows.Forms.Button
+    $script:dlgBtnSave.Text = T 'save'
+    $script:dlgBtnSave.Location = New-Object System.Drawing.Point(12, 298)
+    $script:dlgBtnSave.Size = New-Object System.Drawing.Size(160, 32)
+    $script:dlgForm.Controls.Add($script:dlgBtnSave)
+
+    $script:dlgBtnCancel = New-Object System.Windows.Forms.Button
+    $script:dlgBtnCancel.Text = T 'cancel'
+    $script:dlgBtnCancel.Location = New-Object System.Drawing.Point(184, 298)
+    $script:dlgBtnCancel.Size = New-Object System.Drawing.Size(146, 32)
+    $script:dlgBtnCancel.DialogResult = 'Cancel'
+    $script:dlgForm.Controls.Add($script:dlgBtnCancel)
 
     # slider -> apply brightness immediately
     $script:syncing = $false
@@ -227,7 +310,7 @@ function Show-Settings {
         $script:origLevel = $v
         $script:dimmed = $false
         $script:lastRestore = Get-Date
-        $script:dlgLblInfo.Text = "輝度を適用中: $v%"
+        $script:dlgLblInfo.Text = ((T 'applied') -f $v)
         Log ("slider: brightness -> {0}%" -f $v)
     })
 
@@ -235,13 +318,14 @@ function Show-Settings {
         $script:IdleMinutes = [int]$script:dlgNumIdle.Value
         $script:DimLevel    = [int]$script:dlgNumDim.Value
         $script:PollSec     = [int]$script:dlgNumPoll.Value
-        [pscustomobject]@{ IdleMinutes = $script:IdleMinutes; DimLevel = $script:DimLevel; PollSec = $script:PollSec } |
+        [pscustomobject]@{ IdleMinutes = $script:IdleMinutes; DimLevel = $script:DimLevel; PollSec = $script:PollSec; Language = $script:Lang } |
             ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
         $script:timer.Stop()
         $script:timer.Interval = $script:PollSec * 1000
         $script:timer.Start()
         if ($script:dimmed) { [void][Ddc]::SetLevel([uint32]$script:DimLevel) }
-        Log ("config saved: idle={0}min dim={1}% poll={2}s" -f $script:IdleMinutes, $script:DimLevel, $script:PollSec)
+        Log ("config saved: idle={0}min dim={1}% poll={2}s lang={3}" -f $script:IdleMinutes, $script:DimLevel, $script:PollSec, $script:Lang)
+        Update-MenuTexts
         Update-Tray
         $script:dlgForm.Close()
     })
@@ -282,12 +366,14 @@ $script:notify.Visible = $true
 $script:notify.Add_DoubleClick({ Show-Settings })
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
-$itemSettings = $menu.Items.Add('設定を開く(&O)')
-$itemSettings.Add_Click({ Show-Settings })
+$txt = T 'settings'
+$script:miSettings = $menu.Items.Add($txt)
+$script:miSettings.Add_Click({ Show-Settings })
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-$itemTest = $menu.Items.Add('今すぐ暗転テスト')
-$itemTest.Add_Click({
+$txt = T 'test'
+$script:miTest = $menu.Items.Add($txt)
+$script:miTest.Add_Click({
     $probe = [Ddc]::Probe()
     if ($probe -ne "") {
         $p = $probe.Split('|')
@@ -298,8 +384,9 @@ $itemTest.Add_Click({
         Update-Tray
     }
 })
-$itemRestore = $menu.Items.Add('100%に戻す')
-$itemRestore.Add_Click({
+$txt = T 'restore'
+$script:miRestore = $menu.Items.Add($txt)
+$script:miRestore.Add_Click({
     [void][Ddc]::SetLevel(100)
     $script:dimmed = $false
     $script:lastRestore = Get-Date
@@ -308,10 +395,11 @@ $itemRestore.Add_Click({
 })
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-$script:itemPause = $menu.Items.Add('一時停止')
-$script:itemPause.CheckOnClick = $true
-$script:itemPause.Add_Click({
-    $script:paused = $script:itemPause.Checked
+$txt = T 'pause'
+$script:miPause = $menu.Items.Add($txt)
+$script:miPause.CheckOnClick = $true
+$script:miPause.Add_Click({
+    $script:paused = $script:miPause.Checked
     if ($script:paused -and $script:dimmed) {
         if ($script:origLevel -ge 0) { [void][Ddc]::SetLevel([uint32]$script:origLevel) }
         $script:dimmed = $false
@@ -319,8 +407,9 @@ $script:itemPause.Add_Click({
     Log ("paused: " + $script:paused)
     Update-Tray
 })
-$itemExit = $menu.Items.Add('終了(&X)')
-$itemExit.Add_Click({
+$txt = T 'exit'
+$script:miExit = $menu.Items.Add($txt)
+$script:miExit.Add_Click({
     if ($script:dimmed -and $script:origLevel -ge 0) { [void][Ddc]::SetLevel([uint32]$script:origLevel) }
     $script:timer.Stop()
     $script:notify.Visible = $false
