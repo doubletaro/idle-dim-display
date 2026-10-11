@@ -1,6 +1,8 @@
 # idle-dim-display
 
-A power-saving **system-tray resident** for Windows: dims the monitor backlight via DDC/CI when the keyboard/mouse is idle, and restores it instantly on input. Designed for desktop PCs on AC power — the built-in Windows "dim display" option only applies on battery, so this tool talks to the monitor directly.
+English | [日本語](README.ja.md) | [中文](README.zh.md)
+
+A power-saving **system-tray resident** for Windows: dims the monitor backlight via DDC/CI when the keyboard/mouse is idle, and restores it within 1 second of any input. Designed for desktop PCs on AC power — the built-in Windows "dim display" option only applies on battery, so this tool talks to the monitor directly.
 
 ## Behavior
 
@@ -13,8 +15,10 @@ A power-saving **system-tray resident** for Windows: dims the monitor backlight 
 | Re-dim protection after restore | 30 s |
 
 - **Tray icon resident** (round icon: gold = watching, orange half-moon = dimmed, gray = paused). If hidden, drag it out of the taskbar overflow (`▲`) to keep it visible.
-- **Double-click the icon** (or right-click → Settings) to open the settings dialog: idle minutes / dim level / poll interval as numeric fields → "Save & Apply" persists to JSON and takes effect immediately.
-- **Live brightness slider** in the dialog applies via DDC/CI instantly while dragging (like the monitor's OSD). Slider changes also update the restore point, so the next idle-dim cycle returns to the right level.
+- **Double-click the icon** (or right-click → Settings) to open the settings dialog:
+  - Idle minutes / dimmed brightness / poll interval as numeric fields → "Save and Apply" persists to JSON and takes effect immediately.
+  - **Live brightness slider** applies via DDC/CI instantly while dragging (like the monitor's OSD). Slider changes also update the restore point, so the next idle-dim cycle returns to the right level.
+  - **Language group**: 日本語 / English / 中文 — the dialog, tray menu and tooltip switch immediately; persisted on save.
 - Tray menu: Settings / Dim test now / Restore to 100% / Pause / Exit.
 - Restore always returns to the brightness captured right before dimming — manual brightness changes are respected.
 - If no DDC/CI monitor responds, the tool does nothing (safe no-op).
@@ -59,10 +63,10 @@ powershell $env:USERPROFILE\bin\restart-idle-dim.ps1  # full restart
 
 ## Configuration
 
-The GUI is the primary way to configure ("Save & Apply" takes effect immediately). To edit directly, change `~/bin/idle-dim-config.json`:
+The GUI is the primary way to configure ("Save and Apply" takes effect immediately). To edit directly, change `~/bin/idle-dim-config.json`:
 
 ```json
-{ "IdleMinutes": 3, "DimLevel": 30, "PollSec": 15 }
+{ "IdleMinutes": 3, "DimLevel": 30, "PollSec": 1, "Language": "ja" }
 ```
 
 Then run `restart-idle-dim.ps1`.
@@ -70,7 +74,7 @@ Then run `restart-idle-dim.ps1`.
 ## Gotchas (learned the hard way)
 
 - **`schtasks /end` does not kill the child powershell** — the task's wscript exits immediately and the powershell survives. Always stop/restart via `restart-idle-dim.ps1` (process enumeration + kill).
-- **Japanese strings in `.ps1` require UTF-8 with BOM** — BOM-less files are read as ANSI (Shift-JIS) by PowerShell 5.1 and fail with nonsense token errors.
+- **Japanese/Chinese strings in `.ps1` require UTF-8 with BOM** — BOM-less files are read as ANSI (Shift-JIS) by PowerShell 5.1 and fail with nonsense token errors.
 - **`New-Object Type(a, b + c)` passes 3 arguments** — comma binds tighter than `+`, so `(12, $y + 3)` becomes `(12, $y, 3)` and the constructor throws at runtime when the dialog opens. Parenthesize: `Point(12, ($y + 3))`.
 - **`Add-Type` compiles with warnings-as-errors** — even an unused C# field is a build failure.
 - **Event-handler scriptblocks cannot see function-local variables** — but `.GetNewClosure()` is not the fix: it re-binds `$script:` names to the closure module where they are all null ("Path cannot be null" on `Set-Content`). Store dialog controls in `$script:` variables and keep handlers un-closed.
