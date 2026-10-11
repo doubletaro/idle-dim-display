@@ -321,7 +321,7 @@ function Show-Settings {
         Log ("slider: brightness -> {0}%" -f $v)
     })
 
-    $btnSave.Add_Click({
+    $script:dlgBtnSave.Add_Click({
         $script:IdleMinutes = [int]$script:dlgNumIdle.Value
         $script:DimLevel    = [int]$script:dlgNumDim.Value
         $script:PollSec     = [int]$script:dlgNumPoll.Value
