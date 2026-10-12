@@ -6,6 +6,8 @@ A power-saving **system-tray resident** for Windows: dims the monitor backlight 
 
 **Why it's useful:** you can change your desktop monitor's brightness from the app — no more poking the physical buttons on the monitor bezel through its clunky OSD menu. The tray icon and slider give you instant control from your chair, and the idle-dim cycle cuts power waste on top.
 
+> **Tested on:** Acer **KG242Y S3** (23.8", DDC/CI enabled)
+
 ## Behavior
 
 | Setting | Default |
