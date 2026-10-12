@@ -14,15 +14,7 @@ Windows用の省電力**タスクトレイ常駐ツール**: キーボード・�
 
 ![設定画面](fig/idle-dim_jp.png)
 
-**Settings dialog (English):**
-
-![Settings (English)](fig/idle-dim_en.png)
-
-**设置界面(中文):**
-
-![设置界面](fig/idle-dim_ch.png)
-
-**常駐アイコン / Tray icon / 托盘图标:**
+**常駐アイコン:**
 
 ![常駐アイコン](fig/idle-dim_icon.png)
 

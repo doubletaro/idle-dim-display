@@ -14,15 +14,7 @@ Windows 省电**系统托盘常驻工具**:键盘鼠标空闲时通过 DDC/CI �
 
 ![设置界面](fig/idle-dim_ch.png)
 
-**Settings dialog (English):**
-
-![Settings (English)](fig/idle-dim_en.png)
-
-**設定画面(日本語):**
-
-![設定画面](fig/idle-dim_jp.png)
-
-**托盘图标 / Tray icon / 常駐アイコン:**
+**托盘图标:**
 
 ![托盘图标](fig/idle-dim_icon.png)
 
