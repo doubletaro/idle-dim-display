@@ -4,6 +4,8 @@ English | [日本語](README.ja.md) | [中文](README.zh.md)
 
 A power-saving **system-tray resident** for Windows: dims the monitor backlight via DDC/CI when the keyboard/mouse is idle, and restores it within 1 second of any input. Designed for desktop PCs on AC power — the built-in Windows "dim display" option only applies on battery, so this tool talks to the monitor directly.
 
+**Why it's useful:** you can change your desktop monitor's brightness from the app — no more poking the physical buttons on the monitor bezel through its clunky OSD menu. The tray icon and slider give you instant control from your chair, and the idle-dim cycle cuts power waste on top.
+
 ## Behavior
 
 | Setting | Default |
