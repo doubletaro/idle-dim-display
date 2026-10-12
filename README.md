@@ -8,6 +8,24 @@ A power-saving **system-tray resident** for Windows: dims the monitor backlight 
 
 > **Tested on:** Acer **KG242Y S3** (23.8", DDC/CI enabled)
 
+## Screenshots
+
+**Settings dialog (English):**
+
+![Settings (English)](fig/idle-dim_en.png)
+
+**設定画面(日本語):**
+
+![設定画面](fig/idle-dim_jp.png)
+
+**设置界面(中文):**
+
+![设置界面](fig/idle-dim_ch.png)
+
+**Tray icon / 常駐アイコン / 托盘图标:**
+
+![Tray icon](fig/idle-dim_icon.png)
+
 ## Behavior
 
 | Setting | Default |
