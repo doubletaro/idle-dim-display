@@ -118,6 +118,8 @@ $script:dimmed = $false
 $script:origLevel = -1
 $script:lastRestore = [DateTime]::MinValue
 $script:paused = $false
+$script:restoreTries = 0
+$script:lastGoodLevel = -1
 
 # --- tray icon drawing ---
 function New-TrayIcon([string]$mode) {
@@ -315,6 +317,7 @@ function Show-Settings {
         $v = [int]$script:dlgTrack.Value
         [void][Ddc]::SetLevel([uint32]$v)
         $script:origLevel = $v
+        $script:lastGoodLevel = $v
         $script:dimmed = $false
         $script:lastRestore = Get-Date
         $script:dlgLblInfo.Text = ((T 'applied') -f $v)
@@ -350,12 +353,26 @@ $script:timer.Add_Tick({
     $idle = [Ddc]::IdleSeconds()
     $threshold = $script:IdleMinutes * 60
     if ($script:dimmed -and $idle -lt 10) {
-        # fast path: fresh input -> restore immediately (no probe needed)
+        # fast path: fresh input -> restore immediately
         if ($script:origLevel -ge 0) { [void][Ddc]::SetLevel([uint32]$script:origLevel) }
-        $script:dimmed = $false
-        $script:lastRestore = Get-Date
-        Log ("restore: input detected -> {0}%" -f $script:origLevel)
-        Update-Tray
+        # verify the write stuck (DDC writes can be lost, e.g. after display standby)
+        $probe = [Ddc]::Probe()
+        $ok = $true
+        if ($probe -ne "") {
+            $curNow = [uint32]($probe.Split('|')[1])
+            $ok = ($curNow -eq [uint32]$script:origLevel)
+        }
+        if ($ok -or $script:restoreTries -ge 10) {
+            $script:dimmed = $false
+            $script:lastRestore = Get-Date
+            $script:restoreTries = 0
+            if ($script:origLevel -ge 0) { $script:lastGoodLevel = $script:origLevel }
+            Log ("restore: input detected -> {0}%{1}" -f $script:origLevel, $(if ($ok) { " (verified)" } else { " (unverified, giving up)" }))
+            Update-Tray
+        } else {
+            $script:restoreTries++
+            Log ("restore retry {0}: target {1}% not stuck yet" -f $script:restoreTries, $script:origLevel)
+        }
         return
     }
     if (-not $script:dimmed -and $idle -ge $threshold -and ((Get-Date) - $script:lastRestore).TotalSeconds -gt 30) {
@@ -363,7 +380,15 @@ $script:timer.Add_Tick({
         if ($probe -eq "") { return }
         $p = $probe.Split('|')
         $min = [uint32]$p[0]; $cur = [uint32]$p[1]
-        $script:origLevel = $cur
+        if ($cur -le $script:DimLevel -and $script:lastGoodLevel -ge 0) {
+            # screen is still at/below dim level: the previous restore likely failed -
+            # do NOT adopt the dim level as the restore point, keep the last known good level
+            $script:origLevel = [uint32]$script:lastGoodLevel
+            Log ("dim: probe read {0}% (<= dim level) -> keeping restore point {1}%" -f $cur, $script:origLevel)
+        } else {
+            $script:origLevel = $cur
+            $script:lastGoodLevel = $cur
+        }
         [void][Ddc]::SetLevel([Math]::Max($script:DimLevel, $min))
         $script:dimmed = $true
         Log ("dim: idle {0}s -> {1}% (restore={2}%)" -f $idle, $script:DimLevel, $script:origLevel)
