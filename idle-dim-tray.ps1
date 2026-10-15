@@ -30,7 +30,7 @@ function Get-Config {
     if (Test-Path $script:CfgPath) {
         try { return Get-Content $script:CfgPath -Raw | ConvertFrom-Json } catch { }
     }
-    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 1; Language = 'ja' }
+    $def = [pscustomobject]@{ IdleMinutes = 3; DimLevel = 30; PollSec = 1; Language = 'ja'; Brightness = 100 }
     $def | ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
     return $def
 }
@@ -40,6 +40,13 @@ $script:DimLevel    = [int]$cfg.DimLevel
 $script:PollSec     = [int]$cfg.PollSec
 $script:Lang        = [string]$cfg.Language
 if (@('ja','en','zh') -notcontains $script:Lang) { $script:Lang = 'ja' }
+if ($null -eq $cfg.Brightness) { $script:SavedBrightness = 100 } else { $script:SavedBrightness = [int]$cfg.Brightness }
+
+function Write-Config {
+    [pscustomobject]@{ IdleMinutes = $script:IdleMinutes; DimLevel = $script:DimLevel; PollSec = $script:PollSec; Language = $script:Lang; Brightness = $script:SavedBrightness } |
+        ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
+    Log ("config saved: idle={0}min dim={1}% poll={2}s lang={3} brightness={4}%" -f $script:IdleMinutes, $script:DimLevel, $script:PollSec, $script:Lang, $script:SavedBrightness)
+}
 
 # --- DDC/CI helpers ---
 $code = @'
@@ -120,6 +127,16 @@ $script:lastRestore = [DateTime]::MinValue
 $script:paused = $false
 $script:restoreTries = 0
 $script:lastGoodLevel = -1
+
+# startup: apply the persisted user brightness (only if the monitor responds)
+if ($script:SavedBrightness -ge 0) {
+    $p0 = [Ddc]::Probe()
+    if ($p0 -ne "") {
+        [void][Ddc]::SetLevel([uint32]$script:SavedBrightness)
+        $script:lastGoodLevel = $script:SavedBrightness
+        Log ("startup: brightness -> {0}% (from config)" -f $script:SavedBrightness)
+    }
+}
 
 # --- tray icon drawing ---
 function New-TrayIcon([string]$mode) {
@@ -237,12 +254,10 @@ function Show-Settings {
     $script:dlgTrack.Location = New-Object System.Drawing.Point(12, 155)
     $script:dlgTrack.Size = New-Object System.Drawing.Size(320, 45)
     $probe = [Ddc]::Probe()
-    if ($probe -ne "") {
-        $p = $probe.Split('|')
-        $script:dlgTrack.Value = [Math]::Min([Math]::Max([int]$p[1], 0), 100)
-    } else {
-        $script:dlgTrack.Value = $script:DimLevel
-    }
+    $initLevel = $script:SavedBrightness
+    if ($initLevel -lt 0 -and $probe -ne "") { $initLevel = [int]($probe.Split('|')[1]) }
+    if ($initLevel -lt 0) { $initLevel = $script:DimLevel }
+    $script:dlgTrack.Value = [Math]::Min([Math]::Max($initLevel, 0), 100)
     $script:dlgForm.Controls.Add($script:dlgTrack)
 
     $script:dlgLblInfo = New-Object System.Windows.Forms.Label
@@ -328,13 +343,12 @@ function Show-Settings {
         $script:IdleMinutes = [int]$script:dlgNumIdle.Value
         $script:DimLevel    = [int]$script:dlgNumDim.Value
         $script:PollSec     = [int]$script:dlgNumPoll.Value
-        [pscustomobject]@{ IdleMinutes = $script:IdleMinutes; DimLevel = $script:DimLevel; PollSec = $script:PollSec; Language = $script:Lang } |
-            ConvertTo-Json | Set-Content $script:CfgPath -Encoding utf8
+        $script:SavedBrightness = [int]$script:dlgTrack.Value
+        Write-Config
         $script:timer.Stop()
         $script:timer.Interval = $script:PollSec * 1000
         $script:timer.Start()
         if ($script:dimmed) { [void][Ddc]::SetLevel([uint32]$script:DimLevel) }
-        Log ("config saved: idle={0}min dim={1}% poll={2}s lang={3}" -f $script:IdleMinutes, $script:DimLevel, $script:PollSec, $script:Lang)
         Update-MenuTexts
         Update-Tray
         $script:dlgForm.Close()
@@ -366,7 +380,11 @@ $script:timer.Add_Tick({
             $script:dimmed = $false
             $script:lastRestore = Get-Date
             $script:restoreTries = 0
-            if ($script:origLevel -ge 0) { $script:lastGoodLevel = $script:origLevel }
+            if ($script:origLevel -ge 0) {
+                $script:lastGoodLevel = $script:origLevel
+                $script:SavedBrightness = $script:origLevel
+                Write-Config
+            }
             Log ("restore: input detected -> {0}%{1}" -f $script:origLevel, $(if ($ok) { " (verified)" } else { " (unverified, giving up)" }))
             Update-Tray
         } else {
